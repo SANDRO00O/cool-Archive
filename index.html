@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ticket Archive</title>
+  <link rel="stylesheet" href="assets/css/style.css" type="text/css" media="all" />
+</head>
+<body>
+  <header>
+    <nav>
+      <a href="https://karrarnazim.netlify.app" class="nav-link">Contact</a>
+      <a class="site-title" href="/index.html">Ticket Archive</a>
+      <a href="assets/links/Flowers.html" class="nav-link">Flowers</a>
+    </nav>
+  </header>
+
+  <main>
+    <div class="ticket-container" id="gallery"></div>
+  </main>
+
+  <footer>
+    <p>- The end -</p>
+    <p style="font-size: 0.9em; color: #666; margin-top: 10px;">
+      This website was created for educational and non-commercial purposes only. All displayed artwork belongs to graphic designer <strong>Blaise Hayward</strong>. Visit the original portfolio at 
+      <a href="https://www.blaisehayward.com" target="_blank" rel="noopener noreferrer">blaisehayward.com</a>.
+    </p>
+  </footer>
+
+<script>
+  const gallery = document.getElementById('gallery');
+  const addedImages = new Set();
+
+  const observer = new IntersectionObserver((entries, obs) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const img = entry.target;
+        img.src = img.dataset.src;
+        img.removeAttribute('data-src');
+        obs.unobserve(img);
+      }
+    });
+  }, {
+    rootMargin: '100px',
+    threshold: 0.1
+  });
+
+  fetch('image.json')
+    .then(res => res.json())
+    .then(images => {
+      images.forEach(src => {
+        if (!addedImages.has(src)) {
+          addedImages.add(src);
+
+          const img = document.createElement('img');
+          img.dataset.src = src;
+          img.alt = 'Concert Ticket';
+          img.className = 'ticket';
+          img.src = '';
+          gallery.appendChild(img);
+          observer.observe(img);
+        }
+      });
+    })
+    .catch(err => console.error('error:', err));
+</script>
+</body>
+</html>
