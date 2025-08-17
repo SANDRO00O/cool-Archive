@@ -1,286 +1,474 @@
 <!DOCTYPE html>
-<html lang="en">
-
+<html lang="ar">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Ticket Archive</title>
-  <link rel="stylesheet" href="assets/css/style.css" type="text/css" media="all" />
+  <title>Infinite Canvas - مثال متقدم (يحترم أحجام الصور وعددها)</title>
   <style>
-    body {
-      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial;
-      margin: 0;
-      color: #222;
-      background: #fafafa;
+    :root{
+      --bg:#0f1724;
+      --text:#e6eef8;
     }
-    
-    header nav {
-      display: flex;
-      gap: 12px;
-      padding: 16px;
-      align-items: center;
-      background: #fff;
-      box-shadow: 0 1px 0 rgba(0, 0, 0, .05);
+    html,body{
+      height:100%;
+      margin:0;
+      font-family: Inter, system-ui, "Segoe UI", Roboto, Arial;
+      background: linear-gradient(180deg, var(--bg), #081024);
+      color:var(--text);
+      overflow:hidden;
+      -webkit-font-smoothing:antialiased;
     }
-    
-    .ticket-container {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 18px;
-      padding: 18px;
-      max-width: 1200px;
-      margin: 24px auto;
+
+    .app { height:100vh; width:100vw; display:flex; flex-direction:column; }
+
+    header{
+      height:64px; display:flex; align-items:center; gap:12px;
+      padding:0 16px; background:rgba(255,255,255,0.02);
+      box-shadow:0 1px 0 rgba(255,255,255,0.03) inset; z-index:40;
     }
-    
-    .ticket-wrap {
-      position: relative;
-      width: 100%;
-      overflow: hidden;
-      border-radius: 12px;
-      background: #eaeaea;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, .04) inset;
+    header h1{ font-size:16px; margin:0; }
+    .controls{ margin-left:auto; display:flex; gap:8px; align-items:center; }
+    .btn{
+      background:rgba(255,255,255,0.03); color:var(--text);
+      border:1px solid rgba(255,255,255,0.04); padding:6px 10px;
+      border-radius:8px; cursor:pointer; font-size:13px;
     }
-    
-    .ticket {
-      display: block;
-      width: 100%;
-      height: auto;
-      object-fit: cover;
-      object-position: center;
-      opacity: 0;
-      transform: translateY(6px);
-      transition: opacity 420ms ease, transform 420ms ease, filter 240ms ease;
-      background: transparent;
+
+    #viewport{
+      position:relative; flex:1; overflow:hidden; touch-action:none;
+      background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(0,0,0,0.08));
     }
-    
-    /* تظهر فوراً لكنها بكسلية لأننا نولدها بدقة منخفضة جداً */
-    .ticket.lqip {
-      opacity: 1;
-      transform: none;
-      image-rendering: pixelated;
-      filter: none;
+
+    #world{
+      position:absolute; left:0; top:0; transform-origin:0 0;
+      will-change: transform;
+      pointer-events:none;
+      /* width/height set dynamically */
     }
-    
-    /* عند اكتمال الصورة العالية الدقة */
-    .ticket.loaded {
-      opacity: 1;
-      transform: translateY(0);
-      image-rendering: auto;
-      filter: none;
+
+    .plate{
+      position:absolute;
+      border-radius:10px;
+      overflow:hidden;
+      box-shadow: 0 8px 30px rgba(2,6,23,0.7);
+      transition: transform .18s ease, box-shadow .18s ease, opacity .2s ease;
+      pointer-events:auto;
+      background:rgba(255,255,255,0.02);
+      display:flex; align-items:center; justify-content:center;
+      backface-visibility:hidden;
+      transform: translateZ(0); /* force GPU compositing */
     }
-    
-    /* لمسة بسيطة عند التحويم */
-    .ticket-wrap:hover {
-      transform: translateY(-3px);
-      transition: transform 220ms ease;
-      box-shadow: 0 8px 20px rgba(0, 0, 0, .08);
+    .plate:hover{ transform: translateY(-8px) scale(1.02); box-shadow: 0 20px 50px rgba(2,6,23,0.85); }
+
+    .plate img{
+      display:block; width:100%; height:100%; object-fit:cover;
+      filter: blur(18px) saturate(.9) contrast(.95);
+      transition: filter 400ms ease, opacity 300ms ease;
+      opacity:0.98;
+      user-select:none; pointer-events:none;
     }
-    
-    footer {
-      text-align: center;
-      padding: 28px;
-      color: #666;
-      font-size: .95rem;
+    .plate img.loaded{ filter:none; opacity:1; }
+
+    .help{
+      position:fixed; left:14px; bottom:14px; background:rgba(2,6,23,0.6);
+      padding:10px 12px; border-radius:10px; font-size:13px; z-index:60;
+      backdrop-filter: blur(6px);
     }
-    
-    a {
-      color: #1565c0;
-      text-decoration: none;
+
+    .status{
+      position:fixed; right:14px; bottom:14px; background:rgba(255,255,255,0.03);
+      padding:8px 10px; border-radius:8px; font-size:13px; z-index:60;
+      border:1px solid rgba(255,255,255,0.03);
     }
-    
-    a:hover {
-      text-decoration: underline;
+
+    .loader { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+      color:rgba(255,255,255,0.7); padding:8px 12px; background:rgba(0,0,0,0.45);
+      border-radius:8px; z-index:70; display:none;
+    }
+    .loader.show{ display:block; }
+
+    @media (max-width:640px){
+      header h1{ font-size:14px; }
     }
   </style>
 </head>
-
 <body>
-  <header>
-    <nav>
-      <a href="https://karrarnazim.space" class="nav-link">Contact</a>
-      <a class="site-title" href="/index.html">Ticket Archive</a>
-      <a href="assets/links/Flowers.html" class="nav-link">Flowers</a>
-    </nav>
-  </header>
-  
-  <main>
-    <div class="ticket-container" id="gallery"></div>
-  </main>
-  
-  <footer>
-    <p>- The end -</p>
-    <p style="font-size:0.9em; color:#666; margin-top:10px;">
-      This website was created for educational and non-commercial purposes only. All displayed artwork belongs to graphic designer <strong>Blaise Hayward</strong>.
-      Visit the original portfolio at <a href="https://www.blaisehayward.com" target="_blank" rel="noopener noreferrer">blaisehayward.com</a>.
-    </p>
-  </footer>
-  
+  <div class="app">
+    <header>
+      <h1>لوحة لانهائية — أحجام صور ديناميكية وحجم الخريطة حسب العدد</h1>
+      <div class="controls">
+        <button id="resetBtn" class="btn">إعادة المركز</button>
+        <button id="fitBtn" class="btn">عرض الكل</button>
+      </div>
+    </header>
+
+    <div id="viewport" aria-hidden="false">
+      <div id="world"></div>
+      <div class="loader" id="loader">جارٍ تحميل الصور…</div>
+    </div>
+
+    <div class="help">
+      اسحب للتحرك — عجلة للتكبير/التصغير — نقرتان مزدوجتان لتكبير سريع
+    </div>
+    <div class="status" id="status">موقع: 0,0 — مقياس: 1.00</div>
+  </div>
+
   <script>
-    const gallery = document.getElementById('gallery');
-    const addedImages = new Set();
-    
-    // إعدادات LQIP
-    const PLACEHOLDER_MAX = 28; // أقصى بُعد بالبيكسل للـ placeholder (غيّرها 16-64 حسب ما تحب)
-    const PLACEHOLDER_QUALITY = 0.6; // جودة WebP للـ placeholder
-    const ROOT_MARGIN = '200px';
-    
-    // 1x1 transparent gif لتجنب أي طلبات إضافية للـ placeholder
-    const EMPTY_DATA_URL = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
-    
-    // Lazy load بالـ IntersectionObserver
-    const io = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (!entry.isIntersecting) return;
-        const img = entry.target;
-        io.unobserve(img);
-        startLoad(img);
+  (function(){
+    // عناصر DOM
+    const viewport = document.getElementById('viewport');
+    const world = document.getElementById('world');
+    const loader = document.getElementById('loader');
+    const status = document.getElementById('status');
+    const resetBtn = document.getElementById('resetBtn');
+    const fitBtn = document.getElementById('fitBtn');
+
+    // حالة التحويل
+    let state = { tx:0, ty:0, scale:1 };
+
+    // مصفوفة البطاقات
+    const plates = []; // كل عنصر: {el, img, w, h, left, top}
+
+    // إعدادات سلوك
+    const GAP_MIN = 20;
+    const GAP_MAX = 80;
+    const WORLD_MAX_DIM = 20000; // لو تجاوز العالم هذا نعمل scale تلقائي لتفادي أبعاد ضخمة جداً
+
+    //Render throttling
+    let rafPending = false;
+    function applyTransform(){
+      if(rafPending) return;
+      rafPending = true;
+      requestAnimationFrame(()=>{
+        world.style.transform = `translate(${state.tx}px, ${state.ty}px) scale(${state.scale})`;
+        status.textContent = `موقع: ${Math.round(state.tx)}, ${Math.round(state.ty)} — مقياس: ${state.scale.toFixed(2)}`;
+        // نفعل culling لتحسين الأداء
+        cullPlates();
+        rafPending = false;
       });
-    }, { rootMargin: ROOT_MARGIN, threshold: 0.01 });
-    
-    // يبني عنصر الصورة + الوعاء
-    function addTicket(src) {
-      const wrap = document.createElement('div');
-      wrap.className = 'ticket-wrap';
-      wrap.style.aspectRatio = '4 / 3'; // نزيلها لاحقاً لما نعرف النسبة الحقيقية
-      
-      const img = document.createElement('img');
-      img.className = 'ticket';
-      img.alt = 'Concert Ticket';
-      img.dataset.src = src;
-      img.src = EMPTY_DATA_URL; // يظهر شفاف لحظياً
-      img.loading = 'lazy';
-      img.decoding = 'async';
-      
-      wrap.appendChild(img);
-      gallery.appendChild(wrap);
-      io.observe(img);
     }
-    
-    // يحوّل نفس الصورة إلى LQIP على المتصفح (طلب شبكة واحد فقط)
-    async function startLoad(imgEl) {
-      const src = imgEl.dataset.src;
-      if (!src) return;
-      
-      try {
-        const res = await fetch(src, { mode: 'cors' });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const blob = await res.blob();
-        
-        // اصنع LQIP
-        let bmp;
-        if ('createImageBitmap' in window) {
-          bmp = await createImageBitmap(blob);
-        } else {
-          // fallback بسيط لـ Safari القديم: استخدم <img> مؤقتاً لاستخراج الأبعاد
-          const probeUrl = URL.createObjectURL(blob);
-          const probe = await loadImage(probeUrl);
-          const canvas = document.createElement('canvas');
-          const ratio = probe.naturalWidth / probe.naturalHeight;
-          const { w, h } = fitMax(probe.naturalWidth, probe.naturalHeight, PLACEHOLDER_MAX);
-          canvas.width = w;
-          canvas.height = h;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(probe, 0, 0, w, h);
-          const lqipURL = canvas.toDataURL('image/webp', PLACEHOLDER_QUALITY);
-          URL.revokeObjectURL(probeUrl);
-          
-          // ثبّت النسبة لتجنب CLS
-          imgEl.style.aspectRatio = `${probe.naturalWidth} / ${probe.naturalHeight}`;
-          imgEl.src = lqipURL;
-          imgEl.classList.add('lqip');
-          
-          // حمّل النسخة الكاملة من نفس الـ blob بدون طلب جديد
-          const fullURL = URL.createObjectURL(blob);
-          await swapToFull(imgEl, fullURL);
-          URL.revokeObjectURL(fullURL);
+
+    // تحميل JSON
+    async function loadImagesJson(){
+      loader.classList.add('show');
+      try{
+        const res = await fetch('images.json', {cache:'no-store'});
+        if(!res.ok) throw new Error('فشل تحميل images.json');
+        const arr = await res.json();
+        if(!Array.isArray(arr) || arr.length===0) {
+          alert('images.json فارغ أو غير صحيح');
           return;
         }
-        
-        // لدينا ImageBitmap بأبعاد أصلية
-        const natW = bmp.width,
-          natH = bmp.height;
-        const { w, h } = fitMax(natW, natH, PLACEHOLDER_MAX);
-        
-        // ارسم نسخة صغيرة جداً على كانفاس
-        const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext('2d', { alpha: true });
-        // drawImage للبُعد الأصلي مع تصغير قوي
-        ctx.drawImage(bmp, 0, 0, w, h);
-        
-        // DataURL منخفض الدقة كـ placeholder
-        const lqipURL = canvas.toDataURL('image/webp', PLACEHOLDER_QUALITY);
-        
-        // ثبّت النسبة لتجنب CLS
-        imgEl.style.aspectRatio = `${natW} / ${natH}`;
-        imgEl.src = lqipURL;
-        imgEl.classList.add('lqip');
-        
-        // بدّل إلى النسخة الكاملة من نفس الـ blob (لا شبكة إضافية)
-        const fullURL = URL.createObjectURL(blob);
-        await swapToFull(imgEl, fullURL);
-        
-        // تنظيف الموارد
-        bmp.close();
-        URL.revokeObjectURL(fullURL);
-      } catch (err) {
-        console.error('Failed to load image:', src, err);
-        // لو فشل التحميل، خليه على الـ EMPTY_DATA_URL أو حط صورة خطأ
-      } finally {
-        imgEl.removeAttribute('data-src');
+        await createPlates(arr);
+        // بعد أن تُنشأ العناصر ونُحمّل الصور، نحسب world ونضع المواقع
+        layoutWorld();
+      }catch(err){
+        console.error(err);
+        alert('خطأ في تحميل images.json أو الصور. راجع المسارات.');
+      }finally{
+        loader.classList.remove('show');
       }
     }
-    
-    // يساعد على حساب أبعاد placeholder بحيث أكبر بُعد = max
-    function fitMax(w, h, max) {
-      if (w >= h) {
-        const nw = max;
-        const nh = Math.max(1, Math.round((h / w) * max));
-        return { w: nw, h: nh };
-      } else {
-        const nh = max;
-        const nw = Math.max(1, Math.round((w / h) * max));
-        return { w: nw, h: nh };
-      }
-    }
-    
-    // حمّل صورة من URL وأرجع العنصر بعد onload
-    function loadImage(url) {
-      return new Promise((resolve, reject) => {
-        const im = new Image();
-        im.decoding = 'async';
-        im.onload = () => resolve(im);
-        im.onerror = reject;
-        im.src = url;
-      });
-    }
-    
-    // بدّل من LQIP إلى النسخة الكاملة مع انتقال ناعم
-    async function swapToFull(imgEl, fullURL) {
-      // حمّل خارج الـ DOM ثم استبدل src
-      const hi = await loadImage(fullURL);
-      // الآن بدّل
-      imgEl.src = fullURL;
-      imgEl.classList.remove('lqip');
-      // ننتظر event من نفس imgEl لضمان اكتمال الرسم قبل إضافة .loaded
-      imgEl.addEventListener('load', () => {
-        imgEl.classList.add('loaded');
-      }, { once: true });
-    }
-    
-    // اقرأ قائمة الصور وابنِ العناصر
-    fetch('images.json')
-      .then(res => res.json())
-      .then(images => {
-        images.forEach(src => {
-          if (!src || addedImages.has(src)) return;
-          addedImages.add(src);
-          addTicket(src);
+
+    // إنشاء البطاقة + عنصر الصورة (نبدأ التحميل فوراً)
+    async function createPlates(list){
+      // نعيد مصفوفة plates إن وُجدت عناصر سابقة
+      world.innerHTML = '';
+      plates.length = 0;
+
+      const promises = list.map((src, idx) => {
+        return new Promise((resolve) => {
+          const plate = document.createElement('div');
+          plate.className = 'plate';
+          plate.style.left = '0px'; plate.style.top = '0px';
+          plate.style.opacity = '0'; // نظهر بعد وضعها في المكان الصحيح
+          // العنصر img
+          const img = document.createElement('img');
+          img.alt = 'صورة';
+          img.draggable = false;
+          img.loading = 'lazy';
+          img.src = src;
+
+          img.addEventListener('load', ()=> {
+            img.classList.add('loaded');
+            // نستخرج الأبعاد الحقيقية
+            const naturalW = img.naturalWidth || 200;
+            const naturalH = img.naturalHeight || 150;
+            // اضف plate للـ DOM الآن (سيُوضع لاحقًا)
+            plate.appendChild(img);
+            world.appendChild(plate);
+
+            // نحفظ بيانات البطاقة
+            plates.push({
+              el: plate,
+              img: img,
+              w: naturalW,
+              h: naturalH,
+              left: 0,
+              top: 0,
+              visible: true
+            });
+
+            // إزالة البلور بترتيب بسيط
+            setTimeout(()=> plate.style.opacity = '1', 50);
+            resolve();
+          });
+
+          img.addEventListener('error', ()=>{
+            img.src = 'data:image/svg+xml;charset=utf-8,' +
+              encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='600' height='400'><rect width='100%' height='100%' fill='#142033'/><text x='50%' y='50%' font-size='20' fill='#9fb2d6' dominant-baseline='middle' text-anchor='middle'>خطأ في تحميل الصورة</text></svg>`);
+            // If error, still push but with default dims:
+            plate.appendChild(img);
+            world.appendChild(plate);
+            plates.push({
+              el: plate, img: img, w: 400, h: 260, left:0, top:0, visible:true
+            });
+            setTimeout(()=> plate.style.opacity = '1', 50);
+            resolve();
+          });
         });
-      })
-      .catch(err => console.error('error loading images.json:', err));
+      });
+
+      // ننتظر كل الصور حتى نحسب التخطيط
+      await Promise.all(promises);
+    }
+
+    // حساب شبكة/توزيع العناصر وابعاد العالم اعتمادًا على عدد الصور وأحجامها
+    function layoutWorld(){
+      if(plates.length === 0) return;
+
+      // حساب متوسط الأبعاد
+      let sumW = 0, sumH = 0;
+      plates.forEach(p => { sumW += p.w; sumH += p.h; });
+      const avgW = sumW / plates.length;
+      const avgH = sumH / plates.length;
+
+      // نحدد عدد الأعمدة تقريبيًا بحيث تكون الشبكة متناسبة مع نسبة الأبعاد
+      let cols = Math.ceil(Math.sqrt(plates.length * (avgW/avgH)));
+      cols = Math.max(1, cols);
+      const rows = Math.ceil(plates.length / cols);
+
+      // الفجوة تعتمد على حجم الشاشة (تكون بين GAP_MIN و GAP_MAX)
+      const vw = Math.max(600, window.innerWidth);
+      const vh = Math.max(400, window.innerHeight - 64);
+      const gap = Math.min(GAP_MAX, Math.max(GAP_MIN, Math.round(Math.min(vw, vh) * 0.03)));
+
+      // نستخدم أحجام فعلية للصور لكن لتجنب عالم ضخم بشكل مفرط نحسب مقياس عالمي
+      // نحسب world قبل المقياس
+      let totalW = 0, totalH = 0;
+      // نفترض شبكة: كل خانة تأخذ متوسط العرض والارتفاع
+      const estimatedCellW = avgW;
+      const estimatedCellH = avgH;
+      totalW = cols * estimatedCellW + (cols + 1) * gap;
+      totalH = rows * estimatedCellH + (rows + 1) * gap;
+
+      // إذا العالم كبير جداً، نحسب مقياس يضبط الأحجام داخل WORLD_MAX_DIM
+      let globalScaleDown = 1;
+      const largestDim = Math.max(totalW, totalH);
+      if(largestDim > WORLD_MAX_DIM){
+        globalScaleDown = WORLD_MAX_DIM / largestDim;
+      }
+
+      // نوزع العناصر: كل عنصر يحتل خانة، لكن نستخدم حجمه الحقيقي (مطبق عليه globalScaleDown)
+      let col = 0, row = 0;
+      // لحفظ الخلايا نحتاج تتبع x start لكل عمود
+      const cellXs = new Array(cols).fill(0).map((_,c)=> gap + c*(estimatedCellW + gap));
+      const cellYs = [];
+      for(let r=0;r<rows;r++) cellYs.push(gap + r*(estimatedCellH + gap));
+
+      // لكن لأن كل صورة قد يكون عرضها مختلفًا، سنقوم بتموضعها داخل الخانة مركزياً
+      plates.forEach((p, i) => {
+        col = i % cols;
+        row = Math.floor(i / cols);
+
+        const scaledW = p.w * globalScaleDown;
+        const scaledH = p.h * globalScaleDown;
+
+        // نحدد الموضع: مركز الخانة
+        const cellX = cellXs[col];
+        const cellY = cellYs[row];
+        const centerX = cellX + estimatedCellW/2;
+        const centerY = cellY + estimatedCellH/2;
+
+        const left = Math.round(centerX - scaledW/2);
+        const top  = Math.round(centerY - scaledH/2);
+
+        p.left = left;
+        p.top = top;
+        p.displayW = Math.round(scaledW);
+        p.displayH = Math.round(scaledH);
+
+        // ضع الأنماط الفعلية للعنصر
+        p.el.style.width = p.displayW + 'px';
+        p.el.style.height = p.displayH + 'px';
+        p.el.style.left = p.left + 'px';
+        p.el.style.top  = p.top + 'px';
+
+        // ضبط الصورة داخل البطاقة
+        p.img.style.width = '100%';
+        p.img.style.height = '100%';
+      });
+
+      // اعادة حساب world اعتماداً على الشبكة والأكبر بين الخلايا
+      const worldW = cols * estimatedCellW + (cols + 1) * gap;
+      const worldH = rows * estimatedCellH + (rows + 1) * gap;
+
+      // نضبط world مع مقياس محتمل (إذا globalScaleDown < 1 فالأحجام بالفعل مخفضة)
+      world.style.width = Math.round(worldW) + 'px';
+      world.style.height = Math.round(worldH) + 'px';
+
+      // نركّز العالم (initial transform) ليظهر وسط اللوحة في الشاشة
+      state.scale = 1;
+      state.tx = (window.innerWidth - worldW) / 2;
+      state.ty = (window.innerHeight - 64 - worldH) / 2;
+      applyTransform();
+    }
+
+    // CULLING: إخفاء البطاقات البعيدة لتحسين الأداء
+    function cullPlates(){
+      // نحسب المستطيل الظاهر في إحداثيات العالم (unscaled)
+      const invScale = 1 / state.scale;
+      const viewLeft = (-state.tx) * invScale;
+      const viewTop  = (-state.ty) * invScale;
+      const viewW = window.innerWidth * invScale;
+      const viewH = (window.innerHeight - 64) * invScale; // خصم الرأس
+
+      const margin = Math.max(200 * invScale, 100); // نوسّع المستطيل قليلاً لتجنب ظهور/اختفاء فجائي
+      const minX = viewLeft - margin, minY = viewTop - margin;
+      const maxX = viewLeft + viewW + margin, maxY = viewTop + viewH + margin;
+
+      for(const p of plates){
+        const px1 = p.left, py1 = p.top;
+        const px2 = p.left + p.displayW, py2 = p.top + p.displayH;
+        const visible = !(px2 < minX || px1 > maxX || py2 < minY || py1 > maxY);
+
+        if(visible && !p.visible){
+          p.el.style.display = '';
+          p.visible = true;
+        } else if(!visible && p.visible){
+          p.el.style.display = 'none';
+          p.visible = false;
+        }
+      }
+    }
+
+    // ----- Pan & Zoom interactions -----
+    let pointerDown = false;
+    let last = {x:0,y:0};
+    let velocity = {x:0,y:0};
+    let lastTime = 0;
+
+    viewport.addEventListener('pointerdown', (e)=>{
+      pointerDown = true;
+      last.x = e.clientX; last.y = e.clientY;
+      lastTime = performance.now();
+      try{ viewport.setPointerCapture(e.pointerId); }catch(_) {}
+    });
+    viewport.addEventListener('pointermove', (e)=>{
+      if(!pointerDown) return;
+      const now = performance.now();
+      const dx = e.clientX - last.x;
+      const dy = e.clientY - last.y;
+      const dt = Math.max(1, now - lastTime);
+
+      state.tx += dx;
+      state.ty += dy;
+
+      // سرعة تقريبية للـ inertia
+      velocity.x = dx / dt * 16;
+      velocity.y = dy / dt * 16;
+
+      last.x = e.clientX; last.y = e.clientY; lastTime = now;
+      applyTransform();
+    });
+    viewport.addEventListener('pointerup', (e)=>{
+      pointerDown = false;
+      try{ viewport.releasePointerCapture(e.pointerId); }catch(_){}
+      requestInertia();
+    });
+    viewport.addEventListener('pointercancel', ()=> { pointerDown = false; });
+
+    function requestInertia(){
+      let friction = 0.92;
+      function step(){
+        velocity.x *= friction;
+        velocity.y *= friction;
+        state.tx += velocity.x;
+        state.ty += velocity.y;
+        applyTransform();
+        if(Math.abs(velocity.x) > 0.3 || Math.abs(velocity.y) > 0.3){
+          requestAnimationFrame(step);
+        }
+      }
+      requestAnimationFrame(step);
+    }
+
+    // wheel zoom (مركز حول مؤشر الفأرة)
+    viewport.addEventListener('wheel', (e)=>{
+      e.preventDefault();
+      const zoomFactor = Math.exp(-e.deltaY * 0.0012);
+      const oldScale = state.scale;
+      let newScale = oldScale * zoomFactor;
+      newScale = Math.max(0.15, Math.min(4.0, newScale));
+      const k = newScale / oldScale;
+
+      const mx = e.clientX, my = e.clientY;
+      state.tx = mx - k * (mx - state.tx);
+      state.ty = my - k * (my - state.ty);
+      state.scale = newScale;
+      applyTransform();
+    }, {passive:false});
+
+    // dblclick zoom
+    viewport.addEventListener('dblclick', (e)=>{
+      const mx = e.clientX, my = e.clientY;
+      const old = state.scale;
+      const target = Math.min(3.0, old * 1.9);
+      const k = target / old;
+      state.tx = mx - k * (mx - state.tx);
+      state.ty = my - k * (my - state.ty);
+      state.scale = target;
+      applyTransform();
+    });
+
+    // أزرار
+    resetBtn.addEventListener('click', ()=>{
+      // نعيد المقياس ونحدد إحداثيات الوسط تقريبيًا
+      state.scale = 1;
+      // بعد layoutWorld تم تعيين world width/height في style
+      const w = parseFloat(world.style.width) || window.innerWidth;
+      const h = parseFloat(world.style.height) || (window.innerHeight - 64);
+      state.tx = (window.innerWidth - w) / 2;
+      state.ty = (window.innerHeight - 64 - h) / 2;
+      applyTransform();
+    });
+
+    fitBtn.addEventListener('click', ()=>{
+      const vw = window.innerWidth;
+      const vh = window.innerHeight - 64;
+      const worldW = parseFloat(world.style.width) || 1000;
+      const worldH = parseFloat(world.style.height) || 800;
+      const scaleX = vw / worldW;
+      const scaleY = vh / worldH;
+      const best = Math.min(1.0, Math.min(scaleX, scaleY)) * 0.95;
+      state.scale = best;
+      state.tx = (vw - worldW*best)/2;
+      state.ty = (vh - worldH*best)/2;
+      applyTransform();
+    });
+
+    // منع اختيار أثناء السحب
+    document.addEventListener('dragstart', e => e.preventDefault());
+
+    // إعادة حساب على حجم النافذة
+    window.addEventListener('resize', ()=>{
+      layoutWorld();
+    });
+
+    // بدء
+    loadImagesJson();
+
+  })();
   </script>
 </body>
-
 </html>
