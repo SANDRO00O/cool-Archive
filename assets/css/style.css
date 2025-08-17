@@ -12,7 +12,7 @@
     box-sizing: border-box;
     -webkit-tap-highlight-color: transparent;
     user-select: none;
-    transition: .2s ease-in-out;
+    transition: .3s ease-in-out;
 }
 
 html, body {
@@ -20,6 +20,8 @@ html, body {
     background: #f9f9f7;
     color: #000;
     overflow-x: hidden;
+    height: 100vh;
+    width: 100%;
 }
 
 /* Header Styles */
@@ -80,7 +82,7 @@ main {
     width: 100%;
     border-radius: 0;
     display: block;
-    transition: transform 0.3s ease;
+    transition: transform 0.3s ease-in-out;
     background: #ddd;
 }
 

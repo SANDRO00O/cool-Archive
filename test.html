@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ticket Archive</title>
+  <link rel="stylesheet" href="assets/css/style.css" type="text/css" media="all" />
+  <style>
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial;
+      margin: 0;
+      color: #222;
+      background: #fafafa;
+    }
+    
+    header nav {
+      display: flex;
+      gap: 12px;
+      padding: 16px;
+      align-items: center;
+      background: #fff;
+      box-shadow: 0 1px 0 rgba(0, 0, 0, .05);
+    }
+    
+    .ticket-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 18px;
+      padding: 18px;
+      max-width: 1200px;
+      margin: 24px auto;
+    }
+    
+    .ticket-wrap {
+      position: relative;
+      width: 100%;
+      overflow: hidden;
+      border-radius: 12px;
+      background: #eaeaea;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, .04) inset;
+    }
+    
+    .ticket {
+      display: block;
+      width: 100%;
+      height: auto;
+      object-fit: cover;
+      object-position: center;
+      opacity: 0;
+      transform: translateY(6px);
+      transition: opacity 420ms ease, transform 420ms ease, filter 240ms ease;
+      background: transparent;
+    }
+    
+    /* تظهر فوراً لكنها بكسلية لأننا نولدها بدقة منخفضة جداً */
+    .ticket.lqip {
+      opacity: 1;
+      transform: none;
+      image-rendering: pixelated;
+      filter: none;
+    }
+    
+    /* عند اكتمال الصورة العالية الدقة */
+    .ticket.loaded {
+      opacity: 1;
+      transform: translateY(0);
+      image-rendering: auto;
+      filter: none;
+    }
+    
+    /* لمسة بسيطة عند التحويم */
+    .ticket-wrap:hover {
+      transform: translateY(-3px);
+      transition: transform 220ms ease;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, .08);
+    }
+    
+    footer {
+      text-align: center;
+      padding: 28px;
+      color: #666;
+      font-size: .95rem;
+    }
+    
+    a {
+      color: #1565c0;
+      text-decoration: none;
+    }
+    
+    a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <nav>
+      <a href="https://karrarnazim.space" class="nav-link">Contact</a>
+      <a class="site-title" href="/index.html">Ticket Archive</a>
+      <a href="assets/links/Flowers.html" class="nav-link">Flowers</a>
+    </nav>
+  </header>
+  
+  <main>
+    <div class="ticket-container" id="gallery"></div>
+  </main>
+  
+  <footer>
+    <p>- The end -</p>
+    <p style="font-size:0.9em; color:#666; margin-top:10px;">
+      This website was created for educational and non-commercial purposes only. All displayed artwork belongs to graphic designer <strong>Blaise Hayward</strong>.
+      Visit the original portfolio at <a href="https://www.blaisehayward.com" target="_blank" rel="noopener noreferrer">blaisehayward.com</a>.
+    </p>
+  </footer>
+  
+  <script>
+    const gallery = document.getElementById('gallery');
+    const addedImages = new Set();
+    
+    // إعدادات LQIP
+    const PLACEHOLDER_MAX = 28; // أقصى بُعد بالبيكسل للـ placeholder (غيّرها 16-64 حسب ما تحب)
+    const PLACEHOLDER_QUALITY = 0.6; // جودة WebP للـ placeholder
+    const ROOT_MARGIN = '200px';
+    
+    // 1x1 transparent gif لتجنب أي طلبات إضافية للـ placeholder
+    const EMPTY_DATA_URL = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
+    
+    // Lazy load بالـ IntersectionObserver
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        const img = entry.target;
+        io.unobserve(img);
+        startLoad(img);
+      });
+    }, { rootMargin: ROOT_MARGIN, threshold: 0.01 });
+    
+    // يبني عنصر الصورة + الوعاء
+    function addTicket(src) {
+      const wrap = document.createElement('div');
+      wrap.className = 'ticket-wrap';
+      wrap.style.aspectRatio = '4 / 3'; // نزيلها لاحقاً لما نعرف النسبة الحقيقية
+      
+      const img = document.createElement('img');
+      img.className = 'ticket';
+      img.alt = 'Concert Ticket';
+      img.dataset.src = src;
+      img.src = EMPTY_DATA_URL; // يظهر شفاف لحظياً
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      
+      wrap.appendChild(img);
+      gallery.appendChild(wrap);
+      io.observe(img);
+    }
+    
+    // يحوّل نفس الصورة إلى LQIP على المتصفح (طلب شبكة واحد فقط)
+    async function startLoad(imgEl) {
+      const src = imgEl.dataset.src;
+      if (!src) return;
+      
+      try {
+        const res = await fetch(src, { mode: 'cors' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const blob = await res.blob();
+        
+        // اصنع LQIP
+        let bmp;
+        if ('createImageBitmap' in window) {
+          bmp = await createImageBitmap(blob);
+        } else {
+          // fallback بسيط لـ Safari القديم: استخدم <img> مؤقتاً لاستخراج الأبعاد
+          const probeUrl = URL.createObjectURL(blob);
+          const probe = await loadImage(probeUrl);
+          const canvas = document.createElement('canvas');
+          const ratio = probe.naturalWidth / probe.naturalHeight;
+          const { w, h } = fitMax(probe.naturalWidth, probe.naturalHeight, PLACEHOLDER_MAX);
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(probe, 0, 0, w, h);
+          const lqipURL = canvas.toDataURL('image/webp', PLACEHOLDER_QUALITY);
+          URL.revokeObjectURL(probeUrl);
+          
+          // ثبّت النسبة لتجنب CLS
+          imgEl.style.aspectRatio = `${probe.naturalWidth} / ${probe.naturalHeight}`;
+          imgEl.src = lqipURL;
+          imgEl.classList.add('lqip');
+          
+          // حمّل النسخة الكاملة من نفس الـ blob بدون طلب جديد
+          const fullURL = URL.createObjectURL(blob);
+          await swapToFull(imgEl, fullURL);
+          URL.revokeObjectURL(fullURL);
+          return;
+        }
+        
+        // لدينا ImageBitmap بأبعاد أصلية
+        const natW = bmp.width,
+          natH = bmp.height;
+        const { w, h } = fitMax(natW, natH, PLACEHOLDER_MAX);
+        
+        // ارسم نسخة صغيرة جداً على كانفاس
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d', { alpha: true });
+        // drawImage للبُعد الأصلي مع تصغير قوي
+        ctx.drawImage(bmp, 0, 0, w, h);
+        
+        // DataURL منخفض الدقة كـ placeholder
+        const lqipURL = canvas.toDataURL('image/webp', PLACEHOLDER_QUALITY);
+        
+        // ثبّت النسبة لتجنب CLS
+        imgEl.style.aspectRatio = `${natW} / ${natH}`;
+        imgEl.src = lqipURL;
+        imgEl.classList.add('lqip');
+        
+        // بدّل إلى النسخة الكاملة من نفس الـ blob (لا شبكة إضافية)
+        const fullURL = URL.createObjectURL(blob);
+        await swapToFull(imgEl, fullURL);
+        
+        // تنظيف الموارد
+        bmp.close();
+        URL.revokeObjectURL(fullURL);
+      } catch (err) {
+        console.error('Failed to load image:', src, err);
+        // لو فشل التحميل، خليه على الـ EMPTY_DATA_URL أو حط صورة خطأ
+      } finally {
+        imgEl.removeAttribute('data-src');
+      }
+    }
+    
+    // يساعد على حساب أبعاد placeholder بحيث أكبر بُعد = max
+    function fitMax(w, h, max) {
+      if (w >= h) {
+        const nw = max;
+        const nh = Math.max(1, Math.round((h / w) * max));
+        return { w: nw, h: nh };
+      } else {
+        const nh = max;
+        const nw = Math.max(1, Math.round((w / h) * max));
+        return { w: nw, h: nh };
+      }
+    }
+    
+    // حمّل صورة من URL وأرجع العنصر بعد onload
+    function loadImage(url) {
+      return new Promise((resolve, reject) => {
+        const im = new Image();
+        im.decoding = 'async';
+        im.onload = () => resolve(im);
+        im.onerror = reject;
+        im.src = url;
+      });
+    }
+    
+    // بدّل من LQIP إلى النسخة الكاملة مع انتقال ناعم
+    async function swapToFull(imgEl, fullURL) {
+      // حمّل خارج الـ DOM ثم استبدل src
+      const hi = await loadImage(fullURL);
+      // الآن بدّل
+      imgEl.src = fullURL;
+      imgEl.classList.remove('lqip');
+      // ننتظر event من نفس imgEl لضمان اكتمال الرسم قبل إضافة .loaded
+      imgEl.addEventListener('load', () => {
+        imgEl.classList.add('loaded');
+      }, { once: true });
+    }
+    
+    // اقرأ قائمة الصور وابنِ العناصر
+    fetch('images.json')
+      .then(res => res.json())
+      .then(images => {
+        images.forEach(src => {
+          if (!src || addedImages.has(src)) return;
+          addedImages.add(src);
+          addTicket(src);
+        });
+      })
+      .catch(err => console.error('error loading images.json:', err));
+  </script>
+</body>
+
+</html>
