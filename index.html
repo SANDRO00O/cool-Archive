@@ -1,78 +1,184 @@
-<!DOCTYPE html>  
-<html lang="en">  
-<head>  
-  <meta charset="UTF-8" />  
-  <meta name="viewport" content="width=device-width, initial-scale=1" />  
-  <title>Ticket Archive</title>  
-  <link rel="stylesheet" href="assets/css/style.css" type="text/css" media="all" />  
-  <style>  
-    .ticket {  
-      transition: opacity 0.4s ease-in-out;  
-      opacity: 0.6;  
-    }  
-    .ticket.loaded {  
-      opacity: 1;  
-    }  
-  </style>  
-</head>  
-<body>  
-  <header>  
-    <nav>  
-      <a href="https://karrarnazim.space" class="nav-link">Contact</a>  
-      <a class="site-title" href="/index.html">Ticket Archive</a>  
-      <a href="assets/links/Flowers.html" class="nav-link">Flowers</a>  
-    </nav>  
-  </header>  
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="assets/css/style.css" type="text/css" media="all" />
+  <title>Ticket Archive</title>
+</head>
+
+<body>
+  <header>
+    <nav>
+      <a href="https://karrarnazim.space" class="nav-link">Contact</a>
+      <a class="site-title" href="/index.html">Ticket Archive</a>
+      <a href="assets/links/Flowers.html" class="nav-link">Flowers</a>
+    </nav>
+    
+    <div class="search-section">
+      <div class="search-container">
+        <div class="search-wrapper">
+          <input type="text" class="search-input" placeholder="Search tickets..." aria-label="Search tickets" />
+          <button class="search-button">Search</button>
+        </div>
+      </div>
+    </div>
+  </header>
   
-  <main>  
-    <div class="ticket-container" id="gallery"></div>  
-  </main>  
+  <main>
+    <div class="ticket-container" id="gallery"></div>
+    <div class="no-results" id="noResults">No results found.</div>
+  </main>
   
-  <footer>  
-    <p>- The end -</p>  
-    <p style="font-size: 0.9em; color: #666; margin-top: 10px;">  
-      This website was created for educational and non-commercial purposes only. All displayed artwork belongs to graphic designer <strong>Blaise Hayward</strong>. Visit the original portfolio at   
-      <a href="https://www.blaisehayward.com" target="_blank" rel="noopener noreferrer">blaisehayward.com</a>.  
-    </p>  
-  </footer>  
+  <footer>
+    <p>- The end -</p>
+    <p style="font-size:0.9em; color:#666; margin-top:10px;">
+      This website was created for educational and non-commercial purposes only. All displayed artwork belongs to graphic designer <strong>Blaise Hayward</strong>.
+      Visit the original portfolio at
+      <a href="https://www.blaisehayward.com" target="_blank" rel="noopener noreferrer">blaisehayward.com</a>.
+    </p>
+  </footer>
   
-<script>  
-  const gallery = document.getElementById('gallery');  
-  const addedImages = new Set();  
+  <!-- Lightbox -->
+  <div id="lightbox" class="lightbox" role="dialog" aria-hidden="true" tabindex="-1">
+    <div>
+      <img id="lightboxImg" alt="" />
+      <div class="info" id="lightboxCaption"></div>
+    </div>
+  </div>
   
-  const observer = new IntersectionObserver((entries, obs) => {  
-    entries.forEach(entry => {  
-      if (entry.isIntersecting) {  
-        const img = entry.target;  
-        img.src = img.dataset.src;  
-        img.onload = () => img.classList.add('loaded'); // بعد التحميل أضف كلاس  
-        img.removeAttribute('data-src');  
-        obs.unobserve(img);  
-      }  
-    });  
-  }, {  
-    rootMargin: '100px',  
-    threshold: 0.1  
-  });  
-  
-  fetch('images.json')  
-    .then(res => res.json())  
-    .then(images => {  
-      images.forEach(src => {  
-        if (!addedImages.has(src)) {  
-          addedImages.add(src);  
-  
-          const img = document.createElement('img');  
-          img.dataset.src = src;  
-          img.alt = 'Concert Ticket';  
-          img.className = 'ticket';  
-          img.src = 'assets/images/placeholder.webp';  
-          gallery.appendChild(img);  
-          observer.observe(img);  
-        }  
-      });  
-    })  
-    .catch(err => console.error('error:', err));  
-</script>  
-</body>  
+  <script>
+    const gallery = document.getElementById('gallery');
+    const noResults = document.getElementById('noResults');
+    const searchInput = document.querySelector('.search-input');
+    const searchButton = document.querySelector('.search-button');
+    
+    const lightbox = document.getElementById('lightbox');
+    const lightboxImg = document.getElementById('lightboxImg');
+    const lightboxCaption = document.getElementById('lightboxCaption');
+    
+    let allImages = [];
+    let addedSet = new Set();
+    
+    function normalize(str) {
+      return String(str || '').toLowerCase().replace(/[_\-]+/g, ' ').replace(/\.(jpg|jpeg|png|webp|gif|bmp)$/i, '').replace(/[^a-z0-9\u0600-\u06FF\s]+/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+    
+    function resolvePath(src) {
+      if (!src) return src;
+      const s = src.trim();
+      if (/^(https?:)?\/\//i.test(s) || s.startsWith('/') || s.startsWith('./') || s.startsWith('../')) return s;
+      if (s.includes('/')) return s;
+      return 'assets/images/' + s;
+    }
+    
+    fetch('images.json')
+      .then(res => res.json())
+      .then(list => {
+        if (!Array.isArray(list)) throw new Error('images.json must be array');
+        allImages = list.reduce((acc, raw) => {
+          const original = String(raw || '');
+          if (addedSet.has(original)) return acc;
+          addedSet.add(original);
+          const resolved = resolvePath(original);
+          const filename = resolved.split('/').pop() || resolved;
+          const title = filename.replace(/\.[^/.]+$/, '').replace(/[_\-]+/g, ' ');
+          const normalized = normalize(title + ' ' + filename);
+          acc.push({ original, resolved, filename, title: title.trim(), normalized });
+          return acc;
+        }, []);
+        render(allImages);
+      }).catch(err => {
+        console.error(err);
+        gallery.innerHTML = '<div class="no-results">Error loading images.json</div>';
+      });
+    
+    const io = new IntersectionObserver((entries, observer) => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        const img = entry.target;
+        const data = img.dataset.src;
+        if (data) {
+          img.src = data;
+          img.onload = () => img.classList.add('loaded');
+          img.removeAttribute('data-src');
+        }
+        observer.unobserve(img);
+      });
+    }, { rootMargin: '120px', threshold: 0.05 });
+    
+    function render(list) {
+      gallery.innerHTML = '';
+      if (!list || list.length === 0) { noResults.style.display = 'block'; return; }
+      noResults.style.display = 'none';
+      const frag = document.createDocumentFragment();
+      list.forEach(item => {
+        const card = document.createElement('article');
+        card.className = 'ticket-card';
+        const img = document.createElement('img');
+        img.className = 'ticket';
+        img.alt = item.title || item.filename;
+        img.dataset.src = item.resolved;
+        img.src = 'assets/images/placeholder.webp';
+        img.loading = 'lazy';
+        img.tabIndex = 0;
+        img.addEventListener('click', () => openLightbox(item));
+        img.addEventListener('keypress', e => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault();
+            openLightbox(item); }
+        });
+        const cap = document.createElement('div');
+        cap.className = 'caption';
+        cap.innerHTML = `<strong>${escapeHtml(item.title)}</strong>`;
+        card.appendChild(img);
+        card.appendChild(cap);
+        frag.appendChild(card);
+        io.observe(img);
+      });
+      gallery.appendChild(frag);
+    }
+    
+    function search(query) {
+      const q = normalize(query || '');
+      if (!q) { render(allImages); return; }
+      const tokens = q.split(' ').filter(Boolean);
+      const filtered = allImages.filter(item => tokens.every(t => item.normalized.indexOf(t) !== -1));
+      render(filtered);
+    }
+    
+    function debounce(fn, wait = 250) { let t; return function(...args) { clearTimeout(t);
+        t = setTimeout(() => fn.apply(this, args), wait); }; }
+    const debouncedSearch = debounce(() => { search(searchInput.value); }, 220);
+    
+    searchInput.addEventListener('input', debouncedSearch);
+    searchButton.addEventListener('click', () => search(searchInput.value));
+    searchInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault();
+        search(searchInput.value); } });
+    
+    function openLightbox(item) {
+      lightboxImg.src = item.resolved;
+      lightboxImg.alt = item.title || item.filename;
+      lightboxCaption.textContent = item.title || item.filename;
+      lightbox.classList.add('show');
+      lightbox.setAttribute('aria-hidden', 'false');
+      lightbox.focus();
+    }
+    
+    function closeLightbox() {
+      lightbox.classList.remove('show');
+      lightbox.setAttribute('aria-hidden', 'true');
+      lightboxImg.src = '';
+      lightboxCaption.textContent = '';
+    }
+    lightbox.addEventListener('click', e => {
+      if (e.target === lightbox || e.target === lightboxImg === false) closeLightbox();
+      if (e.target === lightbox) closeLightbox();
+    });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
+    
+    function escapeHtml(s) { if (!s) return ''; return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;'); }
+  </script>
+</body>
+
 </html>
