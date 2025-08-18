@@ -15,7 +15,7 @@
       <a class="site-title" href="/index.html">Ticket Archive</a>
       <a href="assets/links/Flowers.html" class="nav-link">Flowers</a>
     </nav>
-    
+
     <div class="search-section">
       <div class="search-container">
         <div class="search-wrapper">
@@ -25,12 +25,12 @@
       </div>
     </div>
   </header>
-  
+
   <main>
     <div class="ticket-container" id="gallery"></div>
     <div class="no-results" id="noResults">No results found.</div>
   </main>
-  
+
   <footer>
     <p>- The end -</p>
     <p style="font-size:0.9em; color:#666; margin-top:10px;">
@@ -39,7 +39,7 @@
       <a href="https://www.blaisehayward.com" target="_blank" rel="noopener noreferrer">blaisehayward.com</a>.
     </p>
   </footer>
-  
+
   <!-- Lightbox -->
   <div id="lightbox" class="lightbox" role="dialog" aria-hidden="true" tabindex="-1">
     <div>
@@ -47,24 +47,30 @@
       <div class="info" id="lightboxCaption"></div>
     </div>
   </div>
-  
+
   <script>
     const gallery = document.getElementById('gallery');
     const noResults = document.getElementById('noResults');
     const searchInput = document.querySelector('.search-input');
     const searchButton = document.querySelector('.search-button');
-    
+
     const lightbox = document.getElementById('lightbox');
     const lightboxImg = document.getElementById('lightboxImg');
     const lightboxCaption = document.getElementById('lightboxCaption');
-    
+
     let allImages = [];
     let addedSet = new Set();
-    
+
     function normalize(str) {
-      return String(str || '').toLowerCase().replace(/[_\-]+/g, ' ').replace(/\.(jpg|jpeg|png|webp|gif|bmp)$/i, '').replace(/[^a-z0-9\u0600-\u06FF\s]+/g, ' ').replace(/\s+/g, ' ').trim();
+      return String(str || '')
+        .toLowerCase()
+        .replace(/[_\-]+/g, ' ')
+        .replace(/\.(jpg|jpeg|png|webp|gif|bmp)$/i, '')
+        .replace(/[^a-z0-9\u0600-\u06FF\s]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
     }
-    
+
     function resolvePath(src) {
       if (!src) return src;
       const s = src.trim();
@@ -72,7 +78,46 @@
       if (s.includes('/')) return s;
       return 'assets/images/' + s;
     }
-    
+
+    /**
+     * Extract a "raw" human name from a filename.
+     * Removes:
+     *  - extensions
+     *  - dimension tokens like 17x22 or 43x37.37
+     *  - common noise words (master, print, edit, copy, ticket(s), stub(s), v2, etc.)
+     *  - dates and long numeric tokens (like 23-12-06 or 165)
+     *
+     * Keeps tokens that are alphanumeric (e.g. U2, AC DC) and artist words.
+     */
+    function extractRawName(filename) {
+      if (!filename) return '';
+      // drop extension
+      let s = String(filename).replace(/\.[^/.]+$/, '');
+
+      // replace separators with spaces
+      s = s.replace(/[_\-]+/g, ' ');
+
+      // remove dimension patterns like 17x22, 14.6x20.88, 43x37.37
+      s = s.replace(/\b\d+(\.\d+)?x\d+(\.\d+)?\b/gi, ' ');
+
+      // remove common noise words
+      s = s.replace(/\b(?:master|masterfile|master_file|master-print|master_print|print|print_copy|edit|edited|editors|copy|file|layered|layer|layered_master|stubbs|stubs|stubs?_|stubs?|ticket|tickets|v\d+|version\d+|mastered|mastering|_print|_edit)\b/gi, ' ');
+
+      // remove date-like tokens (23-12-06, 2023-12-06), pure numeric sequences of length >=2 (likely ids)
+      s = s.replace(/\b\d{2,4}(?:[-_]\d{1,2}(?:[-_]\d{1,2})?)?\b/g, ' ');
+      s = s.replace(/\b\d{2,}\b/g, ' ');
+
+      // collapse multiple spaces and trim
+      s = s.replace(/\s+/g, ' ').trim();
+
+      // fallback: if emptied everything, use original cleaned tokens (without extension)
+      if (!s) {
+        s = String(filename).replace(/\.[^/.]+$/, '').replace(/[_\-]+/g, ' ').trim();
+      }
+
+      return s;
+    }
+
     fetch('images.json')
       .then(res => res.json())
       .then(list => {
@@ -81,19 +126,39 @@
           const original = String(raw || '');
           if (addedSet.has(original)) return acc;
           addedSet.add(original);
+
           const resolved = resolvePath(original);
           const filename = resolved.split('/').pop() || resolved;
-          const title = filename.replace(/\.[^/.]+$/, '').replace(/[_\-]+/g, ' ');
-          const normalized = normalize(title + ' ' + filename);
-          acc.push({ original, resolved, filename, title: title.trim(), normalized });
+
+          // default crude title (keeps underscores => replaced soon)
+          const titleFallback = filename.replace(/\.[^/.]+$/, '').replace(/[_\-]+/g, ' ').trim();
+
+          // extract a cleaned "raw name" from the filename
+          const rawName = extractRawName(filename);
+
+          // normalized string used for search, include: rawName, fallback title, filename (lowercased)
+          const normalized = normalize(rawName + ' ' + titleFallback + ' ' + filename);
+
+          acc.push({
+            original,
+            resolved,
+            filename,
+            // show the cleaned raw name in UI
+            title: rawName || titleFallback,
+            normalized
+          });
           return acc;
         }, []);
+
+        // sort by title for nicer presentation (optional)
+        allImages.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+
         render(allImages);
       }).catch(err => {
         console.error(err);
         gallery.innerHTML = '<div class="no-results">Error loading images.json</div>';
       });
-    
+
     const io = new IntersectionObserver((entries, observer) => {
       entries.forEach(entry => {
         if (!entry.isIntersecting) return;
@@ -107,7 +172,7 @@
         observer.unobserve(img);
       });
     }, { rootMargin: '120px', threshold: 0.05 });
-    
+
     function render(list) {
       gallery.innerHTML = '';
       if (!list || list.length === 0) { noResults.style.display = 'block'; return; }
@@ -138,24 +203,29 @@
       });
       gallery.appendChild(frag);
     }
-    
+
     function search(query) {
       const q = normalize(query || '');
       if (!q) { render(allImages); return; }
       const tokens = q.split(' ').filter(Boolean);
       const filtered = allImages.filter(item => tokens.every(t => item.normalized.indexOf(t) !== -1));
       render(filtered);
+      if (!filtered.length) {
+        noResults.style.display = 'block';
+      } else {
+        noResults.style.display = 'none';
+      }
     }
-    
+
     function debounce(fn, wait = 250) { let t; return function(...args) { clearTimeout(t);
         t = setTimeout(() => fn.apply(this, args), wait); }; }
     const debouncedSearch = debounce(() => { search(searchInput.value); }, 220);
-    
+
     searchInput.addEventListener('input', debouncedSearch);
     searchButton.addEventListener('click', () => search(searchInput.value));
     searchInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault();
         search(searchInput.value); } });
-    
+
     function openLightbox(item) {
       lightboxImg.src = item.resolved;
       lightboxImg.alt = item.title || item.filename;
@@ -164,7 +234,7 @@
       lightbox.setAttribute('aria-hidden', 'false');
       lightbox.focus();
     }
-    
+
     function closeLightbox() {
       lightbox.classList.remove('show');
       lightbox.setAttribute('aria-hidden', 'true');
@@ -172,11 +242,10 @@
       lightboxCaption.textContent = '';
     }
     lightbox.addEventListener('click', e => {
-      if (e.target === lightbox || e.target === lightboxImg === false) closeLightbox();
       if (e.target === lightbox) closeLightbox();
     });
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
-    
+
     function escapeHtml(s) { if (!s) return ''; return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;'); }
   </script>
 </body>
