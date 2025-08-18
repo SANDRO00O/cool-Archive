@@ -97,9 +97,13 @@ a:hover {
     font-size: 0.95rem;
     border: none;
     outline: none;
-    background: white;
+    background: transparent;
     color: #333;
     width: 100%;
+}
+
+.search-input:hover{
+    background: #FFFFFF;
 }
 
 .search-button {
